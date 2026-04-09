@@ -1,0 +1,135 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL") // Used heavily by Supabase for migrations alongside connection pooling
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum TriggerType {
+  MANUAL
+  SCHEDULED
+  WEBHOOK
+}
+
+enum WorkflowStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum RunStatus {
+  QUEUED
+  RUNNING
+  SUCCESS
+  FAILED
+  CANCELED
+}
+
+enum StepStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  SKIPPED
+}
+
+model User {
+  id             String         @id @default(uuid())
+  name           String?
+  email          String         @unique
+  passwordHash   String
+  role           Role           @default(USER)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  workflows      Workflow[]
+  runs           Run[]          @relation("RunTriggerer")
+  sessions       Session[]
+}
+
+model Workflow {
+  id             String           @id @default(uuid())
+  userId         String
+  name           String
+  description    String?
+  steps          Json             @default("[]")
+  triggerType    TriggerType      @default(MANUAL)
+  status         WorkflowStatus   @default(ACTIVE)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  runs           Run[]
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model Run {
+  id                String       @id @default(uuid())
+  workflowId        String
+  triggeredById     String
+  status            RunStatus    @default(QUEUED)
+  startedAt         DateTime?
+  finishedAt        DateTime?
+  totalSteps        Int          @default(0)
+  succeededSteps    Int          @default(0)
+  failedStepIndex   Int?
+  errorMessage      String?
+  runtimeMs         Int?
+  createdAt         DateTime     @default(now())
+
+  workflow          Workflow     @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  triggeredBy       User         @relation("RunTriggerer", fields: [triggeredById], references: [id], onDelete: Restrict)
+  logs              StepLog[]
+
+  @@index([workflowId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([workflowId, createdAt])
+}
+
+model StepLog {
+  id            String      @id @default(uuid())
+  runId         String
+  stepIndex     Int
+  action        String
+  status        StepStatus  @default(PENDING)
+  inputJson     Json?
+  outputJson    Json?
+  message       String?
+  screenshotUrl String?
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  createdAt     DateTime    @default(now())
+
+  run           Run         @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+  @@index([runId, stepIndex])
+}
+
+model Session {
+  id                    String       @id @default(uuid())
+  userId                String
+  domain                String
+  encryptedCookies      String
+  encryptedStorageState String
+  expiresAt             DateTime?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+
+  user                  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([domain])
+}

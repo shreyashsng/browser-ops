@@ -1,0 +1,132 @@
+import { chromium, Page } from 'playwright';
+import { prisma } from '@browser-ops/db';
+import { WorkflowStep } from '@browser-ops/shared';
+
+// Converts the generic steps into Playwright commands
+export async function executeWorkflowSteps(runId: string, steps: WorkflowStep[]) {
+  console.log(`[Executor] Starting run ${runId}`);
+  
+  const browser = await chromium.launch({ headless: false }); // User requested headed mode initially
+  
+  // Phase 6: Session Vault Injection
+  let storageState: any = undefined;
+  try {
+    const runData = await prisma.run.findUnique({ where: { id: runId } });
+    if (runData?.triggeredById) {
+      const session = await prisma.session.findFirst({
+        where: { userId: runData.triggeredById },
+        orderBy: { createdAt: 'desc' }
+      });
+      if (session && session.encryptedCookies) {
+        const parsedCookies = JSON.parse(session.encryptedCookies);
+        if (Array.isArray(parsedCookies)) {
+          storageState = { cookies: parsedCookies, origins: [] };
+          console.log(`[Executor] Injected session cookies for domain ${session.domain}`);
+        }
+      }
+    }
+  } catch (err) {
+    console.error(`[Executor] Failed to parse injected cookies:`, err);
+  }
+
+  const context = await browser.newContext(storageState ? { storageState } : undefined);
+  const page = await context.newPage();
+
+  try {
+    for (let i = 0; i < steps.length; i++) {
+      const step = steps[i];
+      let status = 'SUCCESS';
+      let message = `Executed ${step.action}`;
+      const startedAt = new Date();
+
+      try {
+        await executeStepAction(page, step);
+      } catch (err: any) {
+        status = 'FAILED';
+        message = err.message;
+      }
+
+      // Step Screenshot Capture
+      const finishedAt = new Date();
+      let screenshotUrl = null;
+      try {
+        const screenshotBuffer = await page.screenshot({ type: 'png' });
+        const formData = new FormData();
+        formData.append('runId', runId);
+        formData.append('stepIndex', i.toString());
+        formData.append('screenshot', new Blob([screenshotBuffer as any]), 'screenshot.png');
+        
+        const apiUrl = process.env.API_URL || 'http://localhost:4000';
+        const uploadRes = await fetch(`${apiUrl}/artifacts/upload`, {
+          method: 'POST',
+          body: formData
+        });
+        
+        if (uploadRes.ok) {
+          const artifactData = await uploadRes.json();
+          screenshotUrl = artifactData.fileUrl;
+        }
+      } catch (uploadErr) {
+        console.error('Failed to capture or upload screenshot', uploadErr);
+      }
+
+      // Log the step to the database
+      await prisma.stepLog.create({
+        data: {
+          runId,
+          stepIndex: i,
+          action: step.action,
+          status: status as any,
+          message,
+          inputJson: JSON.parse(JSON.stringify(step)),
+          screenshotUrl,
+          startedAt,
+          finishedAt
+        }
+      });
+
+      if (status === 'FAILED') {
+        throw new Error(`Run failed at step ${i}`);
+      }
+    }
+
+    // Success update
+    await prisma.run.update({
+      where: { id: runId },
+      data: { status: 'SUCCESS', finishedAt: new Date() }
+    });
+
+  } catch (error: any) {
+    console.error(`[Executor] Run ${runId} Failed:`, error.message);
+    await prisma.run.update({
+      where: { id: runId },
+      data: { status: 'FAILED', errorMessage: error.message, finishedAt: new Date() }
+    });
+  } finally {
+    await browser.close();
+  }
+}
+
+async function executeStepAction(page: Page, step: WorkflowStep) {
+  const timeout = step.timeout || 30000;
+  switch (step.action) {
+    case 'goto':
+      if (!step.url) throw new Error("URL is required for 'goto' action");
+      await page.goto(step.url, { timeout });
+      break;
+    case 'click':
+      if (!step.selector) throw new Error("Selector is required for 'click' action");
+      await page.click(step.selector, { timeout });
+      break;
+    case 'type':
+      if (!step.selector || step.value === undefined) throw new Error("Selector and Value required for 'type' action");
+      await page.fill(step.selector, step.value, { timeout });
+      break;
+    case 'wait':
+      if (!step.timeout) throw new Error("Timeout required for 'wait' action");
+      await page.waitForTimeout(step.timeout);
+      break;
+    default:
+      throw new Error(`Action ${step.action} is not yet implemented.`);
+  }
+}
