@@ -64,6 +64,7 @@ model Workflow {
   steps          Json             @default("[]")
   triggerType    TriggerType      @default(MANUAL)
   status         WorkflowStatus   @default(ACTIVE)
+  maxRetries     Int              @default(0)
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 

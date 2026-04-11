@@ -14,8 +14,8 @@ const connection = new IORedis(redisUrl, {
 console.log('[Worker] Starting up...');
 
 const worker = new Worker('workflow-runs', async (job: Job) => {
-  const { runId, stepsJson } = job.data;
-  console.log(`[Worker] Picked up job ${job.id} for run ${runId}`);
+  const { runId, stepsJson, maxRetries } = job.data;
+  console.log(`[Worker] Picked up job ${job.id} for run ${runId} (maxRetries: ${maxRetries || 0})`);
   
   // Mark run as "RUNNING"
   await prisma.run.update({
@@ -25,7 +25,7 @@ const worker = new Worker('workflow-runs', async (job: Job) => {
 
   // Execute instructions
   const steps = stepsJson as WorkflowStep[];
-  await executeWorkflowSteps(runId, steps);
+  await executeWorkflowSteps(runId, steps, maxRetries || 0);
 }, { connection });
 
 worker.on('ready', () => {

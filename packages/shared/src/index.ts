@@ -25,7 +25,8 @@ export type WorkflowStep = z.infer<typeof workflowStepSchema>;
 export const workflowSchema = z.object({
   name: z.string().min(1, "Name is required"),
   description: z.string().optional(),
-  steps: z.array(workflowStepSchema)
+  steps: z.array(workflowStepSchema),
+  maxRetries: z.number().optional().default(0)
 });
 
 export type Workflow = z.infer<typeof workflowSchema>;

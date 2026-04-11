@@ -96,7 +96,8 @@ workflowRouter.post('/', async (req: any, res) => {
         name: payload.name,
         description: payload.description,
         userId: req.userId,
-        steps: payload.steps as any
+        steps: payload.steps as any,
+        maxRetries: payload.maxRetries
       }
     });
     
@@ -137,7 +138,8 @@ workflowRouter.post('/:id/run', async (req: any, res) => {
 
     await workflowQueue.add('run', {
       runId: run.id,
-      stepsJson: workflow.steps
+      stepsJson: workflow.steps,
+      maxRetries: workflow.maxRetries
     });
 
     res.status(202).json(run);

@@ -3,12 +3,13 @@ import { prisma } from '@browser-ops/db';
 import { WorkflowStep } from '@browser-ops/shared';
 
 // Converts the generic steps into Playwright commands
-export async function executeWorkflowSteps(runId: string, steps: WorkflowStep[]) {
-  console.log(`[Executor] Starting run ${runId}`);
+export async function executeWorkflowSteps(runId: string, steps: WorkflowStep[], maxRetries: number = 0) {
+  console.log(`[Executor] Starting run ${runId} with maxRetries: ${maxRetries}`);
   
   const browser = await chromium.launch({ headless: false }); // User requested headed mode initially
   
   // Phase 6: Session Vault Injection
+  // ... (rest of session logic)
   let storageState: any = undefined;
   try {
     const runData = await prisma.run.findUnique({ where: { id: runId } });
@@ -63,11 +64,26 @@ export async function executeWorkflowSteps(runId: string, steps: WorkflowStep[])
       let message = `Executed ${step.action}`;
       const startedAt = new Date();
 
-      try {
-        await executeStepAction(page, step);
-      } catch (err: any) {
-        status = 'FAILED';
-        message = err.message;
+      // Implement Retry Logic
+      let lastError = null;
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          if (attempt > 0) {
+              console.log(`[Executor] Retrying step ${i + 1} (Attempt ${attempt}/${maxRetries})...`);
+              // Optional: Add a small delay between retries?
+              await page.waitForTimeout(1000 * attempt); 
+          }
+          await executeStepAction(page, step);
+          status = 'SUCCESS';
+          message = `Executed ${step.action} (Attempts: ${attempt + 1})`;
+          lastError = null;
+          break; // Exit retry loop on success
+        } catch (err: any) {
+          lastError = err;
+          status = 'FAILED';
+          message = err.message;
+          console.error(`[Executor] Step ${i + 1} failed on attempt ${attempt + 1}: ${err.message}`);
+        }
       }
 
       // Step Screenshot Capture
