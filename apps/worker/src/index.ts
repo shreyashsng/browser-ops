@@ -6,7 +6,10 @@ import { WorkflowStep } from '@browser-ops/shared';
 
 // Redis connection - using the docker-compose hostname/port
 const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
-const connection = new IORedis(redisUrl, { maxRetriesPerRequest: null });
+const connection = new IORedis(redisUrl, { 
+  maxRetriesPerRequest: null,
+  tls: redisUrl.startsWith('rediss://') ? {} : undefined
+});
 
 console.log('[Worker] Starting up...');
 

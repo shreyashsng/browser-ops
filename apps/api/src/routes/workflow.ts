@@ -6,7 +6,10 @@ import { Queue } from 'bullmq';
 import IORedis from 'ioredis';
 
 const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
-const connection = new IORedis(redisUrl, { maxRetriesPerRequest: null });
+const connection = new IORedis(redisUrl, { 
+  maxRetriesPerRequest: null,
+  tls: redisUrl.startsWith('rediss://') ? {} : undefined 
+});
 export const workflowQueue = new Queue('workflow-runs', { connection });
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-default-key-for-dev';

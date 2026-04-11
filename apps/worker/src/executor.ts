@@ -20,7 +20,31 @@ export async function executeWorkflowSteps(runId: string, steps: WorkflowStep[])
       if (session && session.encryptedCookies) {
         const parsedCookies = JSON.parse(session.encryptedCookies);
         if (Array.isArray(parsedCookies)) {
-          storageState = { cookies: parsedCookies, origins: [] };
+          const sanitizedCookies = parsedCookies.map((c: any) => {
+            // Playwright strictly requires SameSite to be "Strict", "Lax", or "None"
+            let sameSite = 'Lax';
+            if (c.sameSite && typeof c.sameSite === 'string') {
+              const normalized = c.sameSite.charAt(0).toUpperCase() + c.sameSite.slice(1).toLowerCase();
+              if (['Strict', 'Lax', 'None'].includes(normalized)) {
+                sameSite = normalized;
+              } else if (normalized === 'No_restriction' || normalized === 'Unspecified') {
+                sameSite = 'None';
+              }
+            }
+            
+            return {
+              name: c.name,
+              value: c.value,
+              domain: c.domain,
+              path: c.path || '/',
+              expires: typeof c.expires === 'number' ? c.expires : undefined,
+              httpOnly: Boolean(c.httpOnly),
+              secure: sameSite === 'None' ? true : Boolean(c.secure), // sameSite 'None' strictly requires 'secure'
+              sameSite: sameSite
+            };
+          });
+          
+          storageState = { cookies: sanitizedCookies, origins: [] };
           console.log(`[Executor] Injected session cookies for domain ${session.domain}`);
         }
       }
