@@ -94,7 +94,7 @@ export async function executeWorkflowSteps(runId: string, steps: WorkflowStep[],
             status = 'FAILED';
             message = `Step ${i + 1} failed after ${maxRetries} attempts: ${err.message}`;
 
-            throw new Error(message);
+            break;
           }
         }
       }
