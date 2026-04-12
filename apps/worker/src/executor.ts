@@ -5,9 +5,9 @@ import { WorkflowStep } from '@browser-ops/shared';
 // Converts the generic steps into Playwright commands
 export async function executeWorkflowSteps(runId: string, steps: WorkflowStep[], maxRetries: number = 0) {
   console.log(`[Executor] Starting run ${runId} with maxRetries: ${maxRetries}`);
-  
+
   const browser = await chromium.launch({ headless: false }); // User requested headed mode initially
-  
+
   // Phase 6: Session Vault Injection
   // ... (rest of session logic)
   let storageState: any = undefined;
@@ -32,7 +32,7 @@ export async function executeWorkflowSteps(runId: string, steps: WorkflowStep[],
                 sameSite = 'None';
               }
             }
-            
+
             return {
               name: c.name,
               value: c.value,
@@ -44,7 +44,7 @@ export async function executeWorkflowSteps(runId: string, steps: WorkflowStep[],
               sameSite: sameSite
             };
           });
-          
+
           storageState = { cookies: sanitizedCookies, origins: [] };
           console.log(`[Executor] Injected session cookies for domain ${session.domain}`);
         }
@@ -64,25 +64,38 @@ export async function executeWorkflowSteps(runId: string, steps: WorkflowStep[],
       let message = `Executed ${step.action}`;
       const startedAt = new Date();
 
-      // Implement Retry Logic
       let lastError = null;
-      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-          if (attempt > 0) {
-              console.log(`[Executor] Retrying step ${i + 1} (Attempt ${attempt}/${maxRetries})...`);
-              // Optional: Add a small delay between retries?
-              await page.waitForTimeout(1000 * attempt); 
-          }
+          console.log(`[Executor] Executing step ${i + 1} (Attempt ${attempt}/${maxRetries})`);
           await executeStepAction(page, step);
           status = 'SUCCESS';
-          message = `Executed ${step.action} (Attempts: ${attempt + 1})`;
+          message = `Executed ${step.action} in ${attempt} attempt(s)`;
+
           lastError = null;
-          break; // Exit retry loop on success
+          break;
         } catch (err: any) {
           lastError = err;
-          status = 'FAILED';
-          message = err.message;
-          console.error(`[Executor] Step ${i + 1} failed on attempt ${attempt + 1}: ${err.message}`);
+          console.error(
+            `[Executor] Step ${i + 1} failed on attempt ${attempt}: ${err.message}`
+          );
+
+          if (attempt < maxRetries) {
+            console.log(
+              `[Executor] Retrying step ${i + 1} (Next attempt: ${attempt + 1}/${maxRetries})`
+            );
+
+            // exponential backoff (better than linear)
+            const delay = Math.min(1000 * 2 ** (attempt - 1), 5000);
+            await page.waitForTimeout(delay);
+
+          } else {
+            // FINAL FAILURE
+            status = 'FAILED';
+            message = `Step ${i + 1} failed after ${maxRetries} attempts: ${err.message}`;
+
+            throw new Error(message);
+          }
         }
       }
 
@@ -95,13 +108,13 @@ export async function executeWorkflowSteps(runId: string, steps: WorkflowStep[],
         formData.append('runId', runId);
         formData.append('stepIndex', i.toString());
         formData.append('screenshot', new Blob([screenshotBuffer as any]), 'screenshot.png');
-        
+
         const apiUrl = process.env.API_URL || 'http://localhost:4000';
         const uploadRes = await fetch(`${apiUrl}/artifacts/upload`, {
           method: 'POST',
           body: formData
         });
-        
+
         if (uploadRes.ok) {
           const artifactData = await uploadRes.json();
           screenshotUrl = artifactData.fileUrl;

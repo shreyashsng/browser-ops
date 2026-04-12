@@ -6,9 +6,9 @@ import { Queue } from 'bullmq';
 import IORedis from 'ioredis';
 
 const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
-const connection = new IORedis(redisUrl, { 
+const connection = new IORedis(redisUrl, {
   maxRetriesPerRequest: null,
-  tls: redisUrl.startsWith('rediss://') ? {} : undefined 
+  tls: redisUrl.startsWith('rediss://') ? {} : undefined
 });
 export const workflowQueue = new Queue('workflow-runs', { connection });
 
@@ -22,7 +22,7 @@ export const authMiddleware = async (req: any, res: any, next: any) => {
   const token = authHeader.split(' ')[1];
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
-    
+
     const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
     if (!user) return res.status(401).json({ error: 'User token stale' });
 
@@ -44,7 +44,7 @@ workflowRouter.get('/', async (req: any, res) => {
       },
       orderBy: { createdAt: 'desc' }
     });
-    
+
     res.json(workflows);
   } catch (error) {
     console.error(error);
@@ -57,10 +57,10 @@ workflowRouter.get('/analytics', async (req: any, res) => {
     const totalRuns = await prisma.run.count({ where: { triggeredById: req.userId } });
     const successRuns = await prisma.run.count({ where: { triggeredById: req.userId, status: 'SUCCESS' } });
     const activeSessions = await prisma.session.count({ where: { userId: req.userId } });
-    
+
     // Evaluate percentage bounded gracefully
     const successRate = totalRuns === 0 ? 0 : parseFloat(((successRuns / totalRuns) * 100).toFixed(1));
-    
+
     res.json({
       totalExecutions: totalRuns,
       successRate,
@@ -90,7 +90,7 @@ workflowRouter.get('/:id/runs', async (req: any, res) => {
 workflowRouter.post('/', async (req: any, res) => {
   try {
     const payload = workflowSchema.parse(req.body);
-    
+
     const workflow = await prisma.workflow.create({
       data: {
         name: payload.name,
@@ -100,7 +100,7 @@ workflowRouter.post('/', async (req: any, res) => {
         maxRetries: payload.maxRetries
       }
     });
-    
+
     res.status(201).json(workflow);
   } catch (error: any) {
     console.error(error);
@@ -125,9 +125,9 @@ workflowRouter.post('/:id/run', async (req: any, res) => {
     const workflow = await prisma.workflow.findUnique({
       where: { id: req.params.id, userId: req.userId }
     });
-    
+
     if (!workflow) return res.status(404).json({ error: 'Not found' });
-    
+
     const run = await prisma.run.create({
       data: {
         workflowId: workflow.id,
