@@ -11,6 +11,45 @@ Secure browser-workflow automation platform that lets users describe repetitive 
 - **Queue/Background Jobs**: BullMQ and Redis
 - **Monorepo Management**: pnpm workspaces
 
+## 🏗️ System Architecture
+
+```mermaid
+flowchart LR
+    User[User / Browser]
+
+    subgraph Frontend
+        FE[Next.js App]
+    end
+
+    subgraph Backend
+        API[Express API Server]
+    end
+
+    subgraph Infrastructure
+        DB[(PostgreSQL)]
+        Redis[(Redis / BullMQ)]
+        Storage[(S3 / Supabase Storage)]
+    end
+
+    subgraph Worker
+        WorkerService[Worker Service]
+        Playwright[Playwright Browser Engine]
+    end
+
+    User --> FE
+    FE --> API
+
+    API --> DB
+    API --> Redis
+
+    Redis --> WorkerService
+    WorkerService --> Playwright
+
+    Playwright --> Storage
+    WorkerService --> DB
+
+    API --> Storage
+
 ## Getting Started
 
 ### Prerequisites
