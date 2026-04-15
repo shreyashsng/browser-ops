@@ -49,7 +49,7 @@ flowchart LR
     WorkerService --> DB
 
     API --> Storage
-
+```
 ## Getting Started
 
 ### Prerequisites
